@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"math"
 	"os/exec"
 	"strings"
 	"sync"
@@ -21,6 +22,7 @@ func Shellout(command string) (string, string, error) {
 	return stdout.String(), stderr.String(), err
 }
 
+// var VIDEO_PATH = "./media/neuro-less.mp4"
 var VIDEO_PATH = "./media/neuro-30-min.mp4"
 var OUTPUT_PATH = "./media/split"
 var SPLIT_TIME = time.Minute
@@ -33,7 +35,6 @@ func (t Timespan) Format(format string) string {
 }
 
 func SplitVideo(processId int, buf chan struct{}, output chan int, wg *sync.WaitGroup) {
-	defer wg.Done()
 	_, _, err := Shellout(fmt.Sprintf(
 		"ffmpeg -ss %s -i %s -t %s -c copy %s/split_%d.mp4 -y",
 		Timespan(SPLIT_TIME*time.Duration(processId)).Format("15:04:05"),
@@ -46,8 +47,8 @@ func SplitVideo(processId int, buf chan struct{}, output chan int, wg *sync.Wait
 		panic(fmt.Sprintf("Error running command: %v", err))
 	}
 
-	fmt.Println(processId)
 	<-buf
+	wg.Done()
 	output <- processId
 }
 
@@ -63,12 +64,14 @@ func main() {
 		panic(fmt.Sprintf("Error running command: %v", err))
 	}
 
-	dur = strings.ReplaceAll(dur, "\u00a0", "")
+	dur = strings.ReplaceAll(dur, "\x0a", "")
 
-	vidDur, err := time.ParseDuration("1609.352000s")
+	vidDur, err := time.ParseDuration(dur + "s")
 	if err != nil {
 		panic(fmt.Sprintf("Error parsing video duration: %v", err))
 	}
+
+	parts := int(math.Ceil(vidDur.Minutes()))
 
 	processId := 0
 	done := false
@@ -77,20 +80,25 @@ func main() {
 
 		select {
 		case x := <-output:
-			// if SPLIT_TIME*time.Duration(x) < vidDur {
-			if x+MAX_GOROUTINES < 26 {
-
-				fmt.Println(SPLIT_TIME*time.Duration(x), vidDur)
+			if SPLIT_TIME*time.Duration(x+MAX_GOROUTINES) < vidDur {
 				wg.Add(1)
+				parts--
 				go SplitVideo(x+MAX_GOROUTINES, ch, output, &wg)
-			} else {
-				// this is not the best one because it still
-				// probably will skip some routines if it is faster
+			}
+
+			if parts == 0 {
 				done = true
 			}
 		default:
-			wg.Add(1)
-			go SplitVideo(processId, ch, output, &wg)
+			if processId < MAX_GOROUTINES {
+				wg.Add(1)
+				parts--
+				go SplitVideo(processId, ch, output, &wg)
+			}
+
+			if parts == 0 {
+				done = true
+			}
 		}
 
 		if done {
