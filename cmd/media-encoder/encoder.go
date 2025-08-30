@@ -35,7 +35,7 @@ func (t Timespan) Format(format string) string {
 	return time.Unix(0, 0).UTC().Add(time.Duration(t)).Format(format)
 }
 
-func SplitVideo(processId int, buf chan struct{}, output chan int, wg *sync.WaitGroup) {
+func SplitVideo(processId int, buf chan struct{}, wg *sync.WaitGroup) {
 	_, _, err := Shellout(fmt.Sprintf(
 		"ffmpeg -ss %s -i %s -t %s -c copy %s/split_%d.mp4 -y",
 		Timespan(SPLIT_TIME*time.Duration(processId)).Format("15:04:05"),
@@ -50,7 +50,6 @@ func SplitVideo(processId int, buf chan struct{}, output chan int, wg *sync.Wait
 
 	<-buf
 	wg.Done()
-	output <- processId
 }
 
 func main() {
@@ -61,8 +60,6 @@ func main() {
 
 	var ch = make(chan struct{}, MAX_GOROUTINES)
 	defer close(ch)
-	var output = make(chan int)
-	defer close(output)
 	var wg sync.WaitGroup
 
 	dur, _, err := Shellout(fmt.Sprintf(`ffprobe -i %s -show_entries format=duration -v quiet -of csv="p=0"`, VIDEO_PATH))
@@ -89,35 +86,16 @@ func main() {
 	for {
 		ch <- struct{}{}
 
-		select {
-		case x := <-output:
-			if SPLIT_TIME*time.Duration(x+MAX_GOROUTINES) < vidDur {
-				wg.Add(1)
-				parts--
-				go SplitVideo(x+MAX_GOROUTINES, ch, output, &wg)
-			}
+		wg.Add(1)
+		go SplitVideo(processId, ch, &wg)
+		processId++
 
-			if parts == 0 {
-				done = true
-			}
-		default:
-			if processId < MAX_GOROUTINES {
-				wg.Add(1)
-				parts--
-				go SplitVideo(processId, ch, output, &wg)
-			}
-
-			if parts == 0 {
-				done = true
-			}
+		if parts == processId {
+			done = true
 		}
 
 		if done {
 			break
-		}
-
-		if processId < MAX_GOROUTINES {
-			processId++
 		}
 	}
 
