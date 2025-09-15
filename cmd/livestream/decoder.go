@@ -3,9 +3,9 @@ package main
 import (
 	"bytes"
 	"fmt"
-	"math"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -34,7 +34,8 @@ func Shellout(command string) (string, string, error) {
 }
 
 var VIDEO_PATH = "./media/split"
-var OUTPUT_PATH = "./media" // review this
+var OUTPUT_PATH = "./media/intermediate" // review this
+var INPUT_FILE_NAME = "split"
 var NUM_CHUNKS = 27
 var MAX_GOROUTINES = 10
 
@@ -46,14 +47,12 @@ func (t Timespan) Format(format string) string {
 	return time.Unix(0, 0).UTC().Add(time.Duration(t)).Format(format)
 }
 
-func SplitVideo(processId int, buf chan struct{}, output chan int, wg *sync.WaitGroup) {
+func SplitVideo(processId int, buf chan struct{}, output chan string, wg *sync.WaitGroup) {
+	file_output := fmt.Sprintf("%s/intermediate_%d.ts", OUTPUT_PATH, processId)
 	_, _, err := Shellout(fmt.Sprintf(
-		"ffmpeg -ss %s -i %s -t %s -c copy %s/split_%d.mp4 -y",
-		Timespan(SPLIT_TIME*time.Duration(processId)).Format("15:04:05"),
-		VIDEO_PATH,
-		Timespan(SPLIT_TIME).Format("15:04:05"),
-		OUTPUT_PATH,
-		processId,
+		"ffmpeg -i %s -c copy -bsf:v h264_mp4toannexb -f mpegts %s -y",
+		fmt.Sprintf("%s/%s_%d.mp4", VIDEO_PATH, INPUT_FILE_NAME, processId),
+		file_output,
 	))
 	if err != nil {
 		panic(fmt.Sprintf("Error running command: %v", err))
@@ -61,7 +60,7 @@ func SplitVideo(processId int, buf chan struct{}, output chan int, wg *sync.Wait
 
 	<-buf
 	wg.Done()
-	output <- processId
+	output <- file_output
 }
 
 func main() {
@@ -72,66 +71,62 @@ func main() {
 
 	var ch = make(chan struct{}, MAX_GOROUTINES)
 	defer close(ch)
-	var output = make(chan int)
+	var output = make(chan string)
 	defer close(output)
 	var wg sync.WaitGroup
 
-	dur, _, err := Shellout(fmt.Sprintf(`ffprobe -i %s -show_entries format=duration -v quiet -of csv="p=0"`, VIDEO_PATH))
+	partsStr, _, err := Shellout(fmt.Sprintf(
+		`ls %s | grep "%s" | wc -l`,
+		VIDEO_PATH,
+		INPUT_FILE_NAME,
+	))
 	if err != nil {
 		panic(fmt.Sprintf("Error running command: %v", err))
 	}
-
-	dur = strings.ReplaceAll(dur, "\x0a", "")
-
-	vidDur, err := time.ParseDuration(dur + "s")
+	parts, err := strconv.Atoi(strings.TrimSuffix(partsStr, "\n"))
 	if err != nil {
-		panic(fmt.Sprintf("Error parsing video duration: %v", err))
+		panic(fmt.Sprintf("Error convering to int: %v", err))
 	}
-
-	parts := int(math.Ceil(vidDur.Minutes()))
-
-	// probably it will need to store some data about
-	// the video itself, like how many chunks it have
-	// which is the first and some other stuff to make it
-	// possible to find it i guess
 
 	processId := 0
 	done := false
 	for {
 		ch <- struct{}{}
 
-		select {
-		case x := <-output:
-			if SPLIT_TIME*time.Duration(x+MAX_GOROUTINES) < vidDur {
-				wg.Add(1)
-				parts--
-				go SplitVideo(x+MAX_GOROUTINES, ch, output, &wg)
-			}
+		wg.Add(1)
+		go SplitVideo(processId, ch, output, &wg)
+		processId++
 
-			if parts == 0 {
-				done = true
-			}
-		default:
-			if processId < MAX_GOROUTINES {
-				wg.Add(1)
-				parts--
-				go SplitVideo(processId, ch, output, &wg)
-			}
-
-			if parts == 0 {
-				done = true
-			}
+		if parts == processId {
+			done = true
 		}
 
 		if done {
 			break
 		}
-
-		if processId < MAX_GOROUTINES {
-			processId++
-		}
 	}
 
 	wg.Wait()
-	fmt.Println("Waiting")
+
+	m3u8 := ""
+
+	m3u8 += fmt.Sprintf("#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:%.6f\n#EXT-X-MEDIA-SEQUENCE:0\n", (SPLIT_TIME + time.Second).Seconds())
+
+	for i := range parts {
+		dur, _, err := Shellout(fmt.Sprintf(
+			"ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 %s",
+			fmt.Sprintf("%s/intermediate_%d.ts", OUTPUT_PATH, i),
+		))
+		if err != nil {
+			panic(fmt.Sprintf("Error running command: %v", err))
+		}
+		m3u8 += fmt.Sprintf("#EXTINF:%s,\nintermediate_%d.ts\n", strings.TrimSuffix(dur, "\n"), i)
+	}
+
+	m3u8 += "#EXT-X-ENDLIST\n"
+
+	err = os.WriteFile(fmt.Sprintf("%s/output.m3u8", OUTPUT_PATH), []byte(m3u8), 0644)
+	if err != nil {
+		panic(fmt.Sprintf("Error writing to file: %v", err))
+	}
 }

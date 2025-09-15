@@ -31,6 +31,7 @@ func main() {
 	defer ch.Close()
 
 	router := http.NewServeMux()
+	router.Handle("/file/", http.StripPrefix("/file/", http.FileServer(http.Dir("./media"))))
 	loadRoutes(router)
 
 	logging := middlewares.NewRabbitmqLoggingChannel(ch)
