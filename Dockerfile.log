@@ -1,0 +1,19 @@
+FROM golang:1.24.5-alpine as builder
+
+WORKDIR /app
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY ./cmd/logger .
+
+RUN CGO_ENABLED=0 GOOS=linux go build -o logger logger.go
+
+
+FROM alpine:latest
+
+WORKDIR /app
+
+COPY --from=builder /app/logger .
+
+CMD ["./logger"]

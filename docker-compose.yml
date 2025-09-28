@@ -2,6 +2,8 @@ services:
   rabbitmq:
     image: rabbitmq:4.1.3-management
     container_name: rabbitmq
+    networks:
+      - limit_test
     ports:
       - "5672:5672"
       - "15672:15672"
@@ -11,6 +13,71 @@ services:
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
       - rabbitmq_log:/var/log/rabbitmq
+    healthcheck:
+      test: [ "CMD", "rabbitmq-diagnostics", "-q", "ping" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  logger:
+    build:
+      context: .
+      dockerfile: Dockerfile.log
+    container_name: logger
+    environment:
+      RABBITMQ_URL: amqp://user:password@rabbitmq:5672/
+    networks:
+      - limit_test
+    ports:
+      - "4040:4040"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: api
+    environment:
+      RABBITMQ_URL: amqp://user:password@rabbitmq:5672/
+      OTEL_URL: http://otel-collector:4318/
+      PORT: 42069
+    networks:
+      - limit_test
+    ports:
+      - "42069:42069"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+  otel-collector:
+    image: otel/opentelemetry-collector:latest
+    container_name: otel-collector
+    command: [ "--config=/etc/otelcol/config.yaml" ] # Specify the config file path
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://grafana:3000"
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otelcol/config.yaml # Mount your config file
+    ports:
+      - "4317:4317" # OTLP gRPC receiver
+      - "4318:4318" # OTLP HTTP receiver
+      - "8888:8888" # Optional: Prometheus metrics endpoint for the collector itself
+    restart: always
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    depends_on:
+      - otel-collector
+
+networks:
+  limit_test:
+    driver: bridge
 
 volumes:
   rabbitmq_data:

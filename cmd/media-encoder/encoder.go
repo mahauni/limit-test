@@ -24,7 +24,7 @@ func Shellout(command string) (string, string, error) {
 }
 
 // var VIDEO_PATH = "./media/neuro-less.mp4"
-var VIDEO_PATH = "./media/neuro-30-min.mp4"
+var VIDEO_PATH = "./media/neuro-30min.mp4"
 var OUTPUT_PATH = "./media/split"
 var SPLIT_TIME = time.Minute
 var MAX_GOROUTINES = 10

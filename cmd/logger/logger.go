@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 
+	"github.com/caarlos0/env/v11"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
@@ -12,8 +13,16 @@ func failOnError(err error, msg string) {
 	}
 }
 
+type config struct {
+	RabbitMQUrl string `env:"RABBITMQ_URL" envDefault:"amqp://user:password@localhost:5672/"`
+}
+
 func main() {
-	conn, err := amqp.Dial("amqp://user:password@localhost:5672/")
+	var cfg config
+	err := env.Parse(&cfg)
+	failOnError(err, "Failed to load environment variables")
+
+	conn, err := amqp.Dial(cfg.RabbitMQUrl)
 	failOnError(err, "Failed to connect to RabbitMQ")
 	defer conn.Close()
 

@@ -5,9 +5,9 @@ WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 
-COPY . .
+COPY ./cmd/restful ./cmd/restful
 
-RUN CGO_ENABLED=0 GOOS=linux go build -o server main.go
+RUN CGO_ENABLED=0 GOOS=linux go build -o server ./cmd/restful/api.go
 
 
 FROM alpine:latest
@@ -15,8 +15,9 @@ FROM alpine:latest
 WORKDIR /app
 
 COPY --from=builder /app/server .
-COPY public ./public
 
-EXPOSE 8080
+# If there is anything that needs to be coppied for public like images csv and other
+# make it here
+# COPY public ./public
 
 CMD ["./server"]

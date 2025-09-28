@@ -1,4 +1,4 @@
-package main
+package routes
 
 import (
 	"net/http"
@@ -7,7 +7,7 @@ import (
 	"github.com/mahauni/limit-test/cmd/restful/handlers/videostream"
 )
 
-func loadRoutes(router *http.ServeMux) {
+func LoadRoutes(router *http.ServeMux) {
 	dataHandler := &data.Handler{}
 	videoStreamHandler := &videostream.Handler{}
 

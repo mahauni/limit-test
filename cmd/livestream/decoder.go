@@ -11,16 +11,6 @@ import (
 	"time"
 )
 
-// These are the commands that are needed to execute....
-// there is 1 command for each chunk
-// plus 2 more to get the m3u8
-
-// ffmpeg -i input1.mp4 -c copy -bsf:v h264_mp4toannexb -f mpegts intermediate1.ts
-// ffmpeg -i input2.mp4 -c copy -bsf:v h264_mp4toannexb -f mpegts intermediate2.ts
-// ffmpeg -i input3.mp4 -c copy -bsf:v h264_mp4toannexb -f mpegts intermediate3.ts
-// ffmpeg -i "concat:intermediate1.ts|intermediate2.ts|intermediate3.ts" -c copy -bsf:a aac_adtstoasc -f mpegts intermediate_all.ts
-// ffmpeg -i intermediate_all.ts -c copy -bsf:a aac_adtstoasc -f hls -hls_time 10 -hls_list_size 0 output.m3u8
-
 const ShellToUse = "bash"
 
 func Shellout(command string) (string, string, error) {
@@ -34,7 +24,7 @@ func Shellout(command string) (string, string, error) {
 }
 
 var VIDEO_PATH = "./media/split"
-var OUTPUT_PATH = "./media/intermediate" // review this
+var OUTPUT_PATH = "./media/m3u8"
 var INPUT_FILE_NAME = "split"
 var NUM_CHUNKS = 27
 var MAX_GOROUTINES = 10

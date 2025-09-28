@@ -1,11 +1,15 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
 
+	"github.com/caarlos0/env/v11"
 	"github.com/mahauni/limit-test/cmd/restful/middlewares"
+	routers "github.com/mahauni/limit-test/cmd/restful/routers"
+	"github.com/mahauni/limit-test/cmd/telemetry"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
@@ -19,10 +23,18 @@ type Data struct {
 	ID string `json:"id"`
 }
 
-var address = ":1234"
+type config struct {
+	Port        string `env:"PORT" envDefault:"1234"`
+	RabbitMQUrl string `env:"RABBITMQ_URL" envDefault:"amqp://user:password@localhost:5672/"`
+	OtelUrl     string `env:"OTEL_URL" envDefault:"http://localhost:4318/"`
+}
 
 func main() {
-	conn, err := amqp.Dial("amqp://user:password@localhost:5672/")
+	var cfg config
+	err := env.Parse(&cfg)
+	failOnError(err, "Failed to load environment variables")
+
+	conn, err := amqp.Dial(cfg.RabbitMQUrl)
 	failOnError(err, "Failed to connect to RabbitMQ")
 	defer conn.Close()
 
@@ -30,21 +42,29 @@ func main() {
 	failOnError(err, "Failed to connect to a channel")
 	defer ch.Close()
 
+	tel := telemetry.NewTelemetry(context.Background(), "", "limit-test-service", "local")
+	meter, err := tel.InitMeterProvider()
+	failOnError(err, "Failed to init the meter provider")
+	tracer, err := tel.InitTracerProvider()
+	failOnError(err, "Failed to init the tracer provider")
+
 	router := http.NewServeMux()
 	router.Handle("/file/", http.StripPrefix("/file/", http.FileServer(http.Dir("./media"))))
-	loadRoutes(router)
+	routers.LoadRoutes(router)
 
 	logging := middlewares.NewRabbitmqLoggingChannel(ch)
+	telemetry := middlewares.NewOtelTelemtry(tracer, meter, "meter-test")
 
 	stack := middlewares.CreateStack(
 		logging.Logging,
+		telemetry.Telemetry,
 	)
 
 	server := http.Server{
-		Addr:    address,
+		Addr:    fmt.Sprintf(":%s", cfg.Port),
 		Handler: stack(router),
 	}
 
-	fmt.Printf("Server listening on %s\n", address)
+	fmt.Printf("Server listening on %s\n", cfg.Port)
 	log.Fatal(server.ListenAndServe())
 }
