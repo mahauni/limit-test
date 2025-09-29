@@ -26,7 +26,7 @@ type Data struct {
 type config struct {
 	Port        string `env:"PORT" envDefault:"1234"`
 	RabbitMQUrl string `env:"RABBITMQ_URL" envDefault:"amqp://user:password@localhost:5672/"`
-	OtelUrl     string `env:"OTEL_URL" envDefault:"http://localhost:4318/"`
+	OtelUrl     string `env:"OTEL_URL" envDefault:"localhost:4318"`
 }
 
 func main() {
@@ -42,11 +42,13 @@ func main() {
 	failOnError(err, "Failed to connect to a channel")
 	defer ch.Close()
 
-	tel := telemetry.NewTelemetry(context.Background(), "", "limit-test-service", "local")
+	tel := telemetry.NewTelemetry(context.Background(), cfg.OtelUrl, "limit-test-service", "local")
 	meter, err := tel.InitMeterProvider()
 	failOnError(err, "Failed to init the meter provider")
+	defer meter.Shutdown(tel.Context)
 	tracer, err := tel.InitTracerProvider()
 	failOnError(err, "Failed to init the tracer provider")
+	defer tracer.Shutdown(tel.Context)
 
 	router := http.NewServeMux()
 	router.Handle("/file/", http.StripPrefix("/file/", http.FileServer(http.Dir("./media"))))

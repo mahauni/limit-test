@@ -11,6 +11,10 @@ extensions:
 exporters:
   otlp:
     endpoint: "${OTEL_EXPORTER_OTLP_ENDPOINT}"
+    tls:
+      insecure: true
+  prometheus:
+    endpoint: "${OTEL_EXPORTER_PROMETHEUS_ENDPOINT}"
 service:
   pipelines:
     traces:
@@ -18,4 +22,4 @@ service:
       exporters: [otlp]
     metrics:
       receivers: [otlp]
-      exporters: [otlp]
+      exporters: [prometheus]

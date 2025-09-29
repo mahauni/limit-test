@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel/metric"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
@@ -40,11 +41,14 @@ func (t *OtelTelemetry) Telemetry(next http.Handler) http.Handler {
 		{HTTPServerResponseSize, "Measures the size of HTTP response messages", func(m metric.Meter) (any, error) { return m.Float64Histogram(HTTPServerResponseSize) }},
 	}
 
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return otelhttp.NewHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// this metrics are not doing good
 		for _, metricDef := range metrics {
 			if _, err := metricDef.register(meter); err != nil {
 				fmt.Printf("[Telemetry] Failed to create metric %s: %v\n", metricDef.name, err)
 			}
 		}
-	})
+		// i dont know if its like this, I would like to send the url path, but it already has so
+		// i dont know how to do with this
+	}), "/api/metrics")
 }

@@ -16,7 +16,7 @@ import (
 )
 
 type Telemetry struct {
-	ctx               context.Context
+	Context           context.Context
 	collectorEndpoint string
 	serviceName       string
 	environment       string
@@ -32,7 +32,7 @@ func NewTelemetry(ctx context.Context, collectorEndpoint string, serviceName str
 }
 
 func (t *Telemetry) InitTracerProvider() (*sdktrace.TracerProvider, error) {
-	exporter, err := otlptracehttp.New(t.ctx,
+	exporter, err := otlptracehttp.New(t.Context,
 		otlptracehttp.WithEndpoint(t.collectorEndpoint),
 		otlptracehttp.WithInsecure(), // Use WithInsecure for local testing with HTTP
 	)
@@ -53,7 +53,7 @@ func (t *Telemetry) InitTracerProvider() (*sdktrace.TracerProvider, error) {
 }
 
 func (t *Telemetry) InitMeterProvider() (*sdkmetric.MeterProvider, error) {
-	exporter, err := otlpmetrichttp.New(t.ctx,
+	exporter, err := otlpmetrichttp.New(t.Context,
 		otlpmetrichttp.WithEndpoint(t.collectorEndpoint),
 		otlpmetrichttp.WithInsecure(), // Use WithInsecure for local testing with HTTP
 	)
